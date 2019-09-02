@@ -1,0 +1,18 @@
+RocketMQ源码组织结构：
+
+broker：Broker模块(Broker启动进程)；
+client：消息客户端，包含消息生产者、消息消费者相关类；
+common：公共组件；
+Dev：开发中信息(非源代码)；
+distribution：部署实例文件夹(非源代码)；
+example：RocketMQ实例代码；
+filter：消息过滤相关基础类；
+logappender：日志实现相关类；
+namesrv：NameServer实现相关类(NameServer 启动进程)；
+openmessaging：消息开放标准，正在制定中；
+remoting：远程通信模块，基于Netty；
+srvutil：服务器工具类；
+store：消息存储相关实现类；
+style：checkstyle相关实现类；
+test：测试相关类；
+tool：工具类，监控命令相关实现类。
