@@ -1731,12 +1731,22 @@ public class DefaultMessageStore implements MessageStore {
         }
     }
 
+    /**
+     * 清除过期的commitLog的服务
+     */
     class CleanCommitLogService {
 
         private final static int MAX_MANUAL_DELETE_FILE_TIMES = 20;
+        /**
+         * 如果磁盘分区使用率超过该阔值，将设置磁盘不可写，此时会拒绝新消息的写入。
+         */
         private final double diskSpaceWarningLevelRatio =
             Double.parseDouble(System.getProperty("rocketmq.broker.diskSpaceWarningLevelRatio", "0.90"));
 
+        /**
+         * 磁盘空间清除阀值
+         * 如果磁盘分区使用超过该阔值，建议立即执行过期文件清除，但不会拒绝新消息的写入。
+         */
         private final double diskSpaceCleanForciblyRatio =
             Double.parseDouble(System.getProperty("rocketmq.broker.diskSpaceCleanForciblyRatio", "0.85"));
         private long lastRedeleteTimestamp = 0;
@@ -1745,6 +1755,9 @@ public class DefaultMessageStore implements MessageStore {
 
         private volatile boolean cleanImmediately = false;
 
+        /**
+         * 执行参数文件的操作，把manualDeleteFileSeveralTimes设置为20
+         */
         public void excuteDeleteFilesManualy() {
             this.manualDeleteFileSeveralTimes = MAX_MANUAL_DELETE_FILE_TIMES;
             DefaultMessageStore.log.info("executeDeleteFilesManually was invoked");
@@ -1753,17 +1766,31 @@ public class DefaultMessageStore implements MessageStore {
         public void run() {
             try {
                 this.deleteExpiredFiles();
-
                 this.redeleteHangedFile();
             } catch (Throwable e) {
                 DefaultMessageStore.log.warn(this.getServiceName() + " service has exception. ", e);
             }
         }
 
+        /**
+         * 删除过期文件
+         */
         private void deleteExpiredFiles() {
             int deleteCount = 0;
+            //文件保留时间，默认72小时，
             long fileReservedTime = DefaultMessageStore.this.getMessageStoreConfig().getFileReservedTime();
+            //删除commitlog文件的时间间隔，删除一个文件后等一下再删除一个文件
             int deletePhysicFilesInterval = DefaultMessageStore.this.getMessageStoreConfig().getDeleteCommitLogFilesInterval();
+            /*
+             * 销毁MappedFile被拒绝的最大存活时间，默认120s。
+             * 清除过期文件线程在初次销毁mappedfile时，
+             * 如果该文件被其他线程引用，引用次数大于0.
+             * 则设置MappedFile的可用状态为false，
+             * 并设置第一次删除时间，下一次清理任务到达时，
+             * 如果系统时间大于初次删除时间加上本参数，
+             * 则将ref次数一次减1000，
+             * 直到引用次数小于0，则释放物理资源
+             */
             int destroyMapedFileIntervalForcibly = DefaultMessageStore.this.getMessageStoreConfig().getDestroyMapedFileIntervalForcibly();
 
             boolean timeup = this.isTimeToDelete();
@@ -1771,9 +1798,9 @@ public class DefaultMessageStore implements MessageStore {
             boolean manualDelete = this.manualDeleteFileSeveralTimes > 0;
 
             if (timeup || spacefull || manualDelete) {
-
-                if (manualDelete)
+                if (manualDelete) {
                     this.manualDeleteFileSeveralTimes--;
+                }
 
                 boolean cleanAtOnce = DefaultMessageStore.this.getMessageStoreConfig().isCleanFileForciblyEnable() && this.cleanImmediately;
 
@@ -1811,7 +1838,12 @@ public class DefaultMessageStore implements MessageStore {
             return CleanCommitLogService.class.getSimpleName();
         }
 
+        /**
+         * 磁盘充足的情况下。每天几点删除文件
+         * @return ;
+         */
         private boolean isTimeToDelete() {
+            //磁盘文件空间充足情况下，默认每天什么时候执行删除过期文件，默认04表示凌晨4点
             String when = DefaultMessageStore.this.getMessageStoreConfig().getDeleteWhen();
             if (UtilAll.isItTimeToDo(when)) {
                 DefaultMessageStore.log.info("it's time to reclaim disk space, " + when);
@@ -1821,11 +1853,13 @@ public class DefaultMessageStore implements MessageStore {
             return false;
         }
 
+        /**
+         * isSpace去delete
+         * @return ;
+         */
         private boolean isSpaceToDelete() {
             double ratio = DefaultMessageStore.this.getMessageStoreConfig().getDiskMaxUsedSpaceRatio() / 100.0;
-
             cleanImmediately = false;
-
             {
                 String storePathPhysic = DefaultMessageStore.this.getMessageStoreConfig().getStorePathCommitLog();
                 double physicRatio = UtilAll.getDiskPartitionSpaceUsedPercent(storePathPhysic);
